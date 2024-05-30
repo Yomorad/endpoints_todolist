@@ -85,7 +85,7 @@ def tasks_id_get_put_delete(id):
         return jsonify(data)
     elif request.method == "PUT":
         # проверяем наличие требуемых полей в запросе
-        if ("title" and "description") not in request.json:
+        if ("title" not in request.json) and ("description" not in request.json):
             return jsonify({"error": "Title and description are required"}), 400
         # берём данные из запроса
         title = request.json.get("title")
