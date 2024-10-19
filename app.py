@@ -1,104 +1,86 @@
-from flask import Flask, jsonify, request
-from flask_mysqldb import MySQL
+import os
+from dotenv import load_dotenv
+from flask import Flask, request
+from flask_sqlalchemy import SQLAlchemy
+from flask_marshmallow import Marshmallow
 from flasgger import Swagger
-
-from db_actions import *
+from flask_migrate import Migrate
 
 app = Flask(__name__)
 
 # MySQL Configuration
-app.config["MYSQL_HOST"] = "localhost"
-app.config["MYSQL_USER"] = "example"
-app.config["MYSQL_PASSWORD"] = "example"
-app.config["MYSQL_DB"] = "example"
+load_dotenv()
+db_name = os.getenv("MYSQL_DB")
+db_user = os.getenv("MYSQL_USER")
+db_password = os.getenv("MYSQL_PASSWORD")
+db_host = os.getenv("MYSQL_HOST")
+db_port = os.getenv("MYSQL_PORT")
+SQLALCHEMY_DATABASE_URI = f'mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}'
+app.config["SQLALCHEMY_DATABASE_URI"] = SQLALCHEMY_DATABASE_URI
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-mysql = MySQL(app)
+db = SQLAlchemy(app)
+migrate = Migrate(app, db)
+ma = Marshmallow(app)  # Инициализация Marshmallow
+
+# Определение модели
+class Task(db.Model):
+    __tablename__ = 'tasks'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    title = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    updated_at = db.Column(db.DateTime, default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
+
+# Схема для валидации и сериализации
+class TaskSchema(ma.SQLAlchemyAutoSchema):
+    class Meta:
+        model = Task
+        load_instance = True
+
+task_schema = TaskSchema()
+tasks_schema = TaskSchema(many=True)
 
 # Инициализация Swagger
 swagger = Swagger(app)
 
 @app.route("/tasks", methods=["GET", "POST"])
 def tasks_list_get_post():
-    """
-    Получить, добавить список всех задач
-    ---
-    parameters:
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          properties:
-            title:
-              type: string
-            description:
-              type: string
-    responses:
-      200:
-        description: Успешный запрос. Возвращает список задач.
-    """
     if request.method == "GET":
-        # берём данные из бд
-        data = sql_tasks_list_get()
-        return jsonify(data)
+        tasks = Task.query.all()
+        return tasks_schema.dump(tasks), 200  # Используем сериализацию
+
     elif request.method == "POST":
-        # проверяем наличие требуемого поля в запросе
-        if "title" not in request.json:
-            return jsonify({"error": "Title is required"}), 400
-        # берём данные из запроса
-        title = request.json["title"]
-        description = request.json.get("description")
-        # добавляем данные в бд
-        data = sql_tasks_list_post(title, description)
-        return jsonify(data)
+        errors = task_schema.validate(request.json)  # Валидация входных данных
+        if errors:
+            return {"error": errors}, 400  # Возвращаем ошибки валидации
+        task = task_schema.load(request.json)  # Загружаем данные
+        db.session.add(task)
+        db.session.commit()
+        return task_schema.dump(task), 201  # Возвращаем сериализованный объект
 
 @app.route("/tasks/<int:id>", methods=["GET", "PUT", "DELETE"])
 def tasks_id_get_put_delete(id):
-    """
-    Получить, обновить или удалить задачу по ее ID
-    ---
-    parameters:
-      - name: id
-        in: path
-        type: int
-        required: true
-        description: ID задачи
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          properties:
-            title:
-              type: string
-            description:
-              type: string
-    responses:
-      200:
-        description: Успешный запрос. Возвращает данные задачи.
-      400:
-        description: Некорректный запрос.
-    """
+    task = db.session.get(Task, id)
+    if not task:
+        return {"error": "Task not found"}, 404
+
     if request.method == "GET":
-        # берём данные из бд
-        data = sql_tasks_id_get(id)
-        return jsonify(data)
+        return task_schema.dump(task), 200
+
     elif request.method == "PUT":
-        # проверяем наличие требуемых полей в запросе
-        if ("title" not in request.json) and ("description" not in request.json):
-            return jsonify({"error": "Title and description are required"}), 400
-        # берём данные из запроса
-        title = request.json.get("title")
-        description = request.json.get("description")
-        # обновляем данные в бд
-        data = sql_tasks_id_put(id, title, description)
-        return jsonify(data)
+        errors = task_schema.validate(request.json)  # Валидация входных данных
+        if errors:
+            return {"error": errors}, 400  # Возвращаем ошибки валидации
+        task = task_schema.load(request.json, instance=task)  # Обновляем экземпляр
+        db.session.commit()
+        return task_schema.dump(task), 200
+
     elif request.method == "DELETE":
-        # удаляем данные из бд
-        data = sql_tasks_id_delete(id)
-        return jsonify({"message": "Task deleted successfully"})
+        db.session.delete(task)
+        db.session.commit()
+        return {"message": "Task deleted successfully"}, 200
 
 if __name__ == "__main__":
-    # инициализируем бд, если ее нет
-    sql_init_db()
     app.run(debug=True)
