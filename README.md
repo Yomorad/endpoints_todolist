@@ -54,7 +54,7 @@
 ### 1 Клонируем проект
 
 ```bash
-git clone <<https://github.com/Yomorad/flask_sqlalchemy_endpoints>>
+git clone https://github.com/Yomorad/flask_sqlalchemy_endpoints
 ```
 
 ### 2 Настраиваем виртуальную среду
