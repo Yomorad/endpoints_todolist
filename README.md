@@ -1,4 +1,4 @@
-# RESTfull API для управления списком задач(TODO list) 
+# RESTfull API для управления списком задач
 
 ## Stack:
 - Flask
