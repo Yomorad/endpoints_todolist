@@ -1,4 +1,9 @@
-# Разработка RESTfull API на Flask+MySQL для управления списком задач(TODO list) 
+# RESTfull API для управления списком задач(TODO list) 
+
+## Stack:
+- Flask
+- MySQL
+- SQLAlchemy
 
 ## Эндпоинты:
 
